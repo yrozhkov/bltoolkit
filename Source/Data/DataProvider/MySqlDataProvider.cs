@@ -5,7 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
-
+using System.Text;
+using BLToolkit.Mapping;
 using MySql.Data.MySqlClient;
 
 namespace BLToolkit.Data.DataProvider
@@ -222,5 +223,89 @@ namespace BLToolkit.Data.DataProvider
 
 			base.Configure(attributes);
 		}
-	}
+
+
+        #region InsertBatch
+
+        public override int InsertBatch<T>(
+          DbManager db,
+          string insertText,
+          IEnumerable<T> collection,
+          MemberMapper[] members,
+          int maxBatchSize, DbManager.ParameterProvider<T> getParameters)
+        {
+            if (collection == null)
+                return 0;
+
+            var sb = new StringBuilder();
+            var sp =   (MySqlSqlProvider)CreateSqlProvider();
+            int n = 0;
+            int cnt = 0;
+
+            string insertStatement = insertText.Substring(0, insertText.IndexOf(") VALUES (")).Replace("INSERT", "INSERT IGNORE").Replace("\r", "")
+                .Replace("\n", "")
+                .Replace("\t", " ")
+                .Replace("( ", "(") + ") VALUES ";
+
+            foreach (T item in collection)
+            {
+                if (sb.Length == 0)
+                    sb.AppendLine(insertStatement);
+
+                sb.Append("(");
+
+                foreach (MemberMapper member in members)
+                {
+                    object value = member.GetValue(item);
+
+                    if (value is DateTime?)
+                        value = ((DateTime?)value).Value;
+
+
+                    sp.BuildValue(sb, value);
+
+                    sb.Append(", ");
+                }
+
+                sb.Length -= 2;
+                sb.AppendLine("),");
+
+                n++;
+
+                if (n >= maxBatchSize)
+                {
+
+
+                    sb.Length -= 3;
+                    sb.Append(";");
+                    string sql = sb.ToString();
+
+                    if (DbManager.TraceSwitch.TraceInfo)
+                        DbManager.WriteTraceLine("\n" + sql.Replace("\r", ""), DbManager.TraceSwitch.DisplayName);
+
+                    cnt += db.SetCommand(sql).ExecuteNonQuery();
+
+                    n = 0;
+                    sb.Length = 0;
+                }
+            }
+
+            if (n > 0)
+            {
+
+                sb.Length -= 3;
+                sb.Append(";");
+                string sql = sb.ToString();
+
+                if (DbManager.TraceSwitch.TraceInfo)
+                    DbManager.WriteTraceLine("\n" + sql.Replace("\r", ""), DbManager.TraceSwitch.DisplayName);
+
+                cnt += db.SetCommand(sql).ExecuteNonQuery();
+            }
+
+            return cnt;
+        }
+
+        #endregion
+    }
 }
