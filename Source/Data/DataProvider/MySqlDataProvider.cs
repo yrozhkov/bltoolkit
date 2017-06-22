@@ -305,7 +305,6 @@ namespace BLToolkit.Data.DataProvider
 
             return cnt;
         }
-
         #endregion
     }
 }
